@@ -9,7 +9,7 @@ class Service::Search < Service::BaseWithCurrentUser
     end
   end
 
-  attr_reader :query, :objects, :options
+  attr_reader :query, :objects, :options, :original_search_objects_param
 
   # @param current_user [User] which runs the search
   # @param query [String] to search for
@@ -20,6 +20,8 @@ class Service::Search < Service::BaseWithCurrentUser
 
     @query   = query
     @objects = objects
+    # Store original_search_objects_param from options, remove it from options to prevent it being passed down further
+    @original_search_objects_param = options.delete(:original_search_objects_param)
     @options = options
       .compact_blank
       .with_defaults(limit: 10) # limit can be overriden
@@ -27,14 +29,50 @@ class Service::Search < Service::BaseWithCurrentUser
   end
 
   def execute
+    # Determine context once
+    user_org_context = is_user_organization_search_context?
+
     result = models_sorted
-      .index_with { |elem| search_single_model(elem) }
+      .index_with do |model|
+        model_result = search_single_model(model)
+
+        # Conditional filtering for Users in 'user-organization' context
+        if model == User && user_org_context && User::Search.should_be_considered_for_restriction?(current_user)
+          model_result = filter_user_results_for_agent(current_user, model_result)
+        end
+        model_result
+      end
       .compact
 
     Result.new(result, models_sorted)
   end
 
   private
+
+  def filter_user_results_for_agent(agent, user_search_result)
+    return user_search_result if user_search_result.blank? || user_search_result[:objects].blank?
+
+    agent_organization_ids = agent.all_organization_ids
+    if agent_organization_ids.empty?
+      return { objects: [], total_count: 0 } # Agent with no orgs sees no users in this context
+    end
+
+    filtered_objects = user_search_result[:objects].select do |user|
+      (user.organization_id.present? && agent_organization_ids.include?(user.organization_id)) ||
+        (user.organization_ids.present? && (agent_organization_ids & user.organization_ids).any?)
+    end
+
+    # Note: total_count will now reflect the count *after* this in-memory filtering.
+    # This might differ from a total count from a direct DB query with all conditions.
+    { objects: filtered_objects, total_count: filtered_objects.size }
+  end
+
+  def is_user_organization_search_context?
+    return false if original_search_objects_param.blank?
+
+    search_object_parts = original_search_objects_param.split('-').map(&:downcase).sort
+    search_object_parts == %w[organization user]
+  end
 
   def models
     @models ||= objects

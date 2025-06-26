@@ -61,12 +61,13 @@ class SearchController < ApplicationController
 
   def search_result_options
     {
-      limit:            params[:limit] || 10,
-      ids:              params[:ids],
-      offset:           params[:offset],
-      sort_by:          Array(params[:sort_by]).compact_blank.presence,
-      order_by:         Array(params[:order_by]).compact_blank.presence,
-      with_total_count: param_by_object?,
+      limit:                      params[:limit] || 10,
+      ids:                        params[:ids],
+      offset:                     params[:offset],
+      sort_by:                    Array(params[:sort_by]).compact_blank.presence,
+      order_by:                   Array(params[:order_by]).compact_blank.presence,
+      with_total_count:           param_by_object?,
+      original_search_objects_param: params[:objects], # Pass the original objects string
     }.compact
   end
 
