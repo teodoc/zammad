@@ -34,23 +34,6 @@ class User
     # methods defined here are going to extend the class, not the instance of it
     class_methods do
 
-      # Helper method to determine if the current user is an agent whose search
-      # might need restriction based on context (determined by the caller, e.g., Service::Search).
-      # Returns true if the agent is a "standard" agent (not admin, not privileged).
-      def should_be_considered_for_restriction?(current_user)
-        # Not an agent? Then no special agent restriction logic applies.
-        return false unless current_user.permissions?('ticket.agent')
-        # An admin for users? Then no restriction from this logic.
-        return false if current_user.permissions?('admin.user')
-
-        # Check if they belong to any organization that grants unrestricted search.
-        is_member_of_privileged_org = current_user.all_organizations.exists?(grants_unrestricted_search_to_members: true)
-        return false if is_member_of_privileged_org # Privileged agents are not restricted by this logic.
-
-        # If none of the above, this is a standard agent who could be restricted.
-        true
-      end
-
 =begin
 
 search user preferences
