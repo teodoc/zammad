@@ -27,7 +27,7 @@ class User
                       end
         end
 
-        if current_user && User.should_restrict_agent_search?(current_user)
+        if current_user && User.should_restrict_agent_search?(current_user, params[:objects])
           agent_organization_ids = current_user.all_organization_ids
           if agent_organization_ids.present?
             # Users whose primary organization is one of the agent's organizations
@@ -54,7 +54,7 @@ class User
     class_methods do
 
       # Helper method to determine if the current user is an agent whose search should be restricted
-      def should_restrict_agent_search?(current_user)
+      def should_restrict_agent_search?(current_user, search_objects_param = nil)
         # Not an agent? Then this specific agent restriction logic doesn't apply.
         return false if !current_user.permissions?('ticket.agent')
         # An admin for users? Then no restriction.
@@ -63,10 +63,15 @@ class User
         # Now we know it's an agent without admin.user permission.
         # Check if they belong to any organization that grants unrestricted search.
         is_member_of_privileged_org = current_user.all_organizations.exists?(grants_unrestricted_search_to_members: true)
+        return false if is_member_of_privileged_org # Privileged agents are not restricted by this filter
 
-        # If they are a member of a privileged org, do *not* restrict their search.
-        # Otherwise (if they are not a member of any privileged org), *do* restrict their search.
-        !is_member_of_privileged_org
+        # Apply restriction only if it's the specific user-organization search context
+        # and the agent is not privileged.
+        # Robust check for 'user-organization' in any order
+        search_object_parts = search_objects_param.to_s.split('-').map(&:downcase).sort
+        is_user_organization_search_context = (search_object_parts == %w[organization user])
+
+        is_user_organization_search_context # Restrict only if true (it's user-org search and non-privileged agent)
       end
 
 =begin
@@ -150,7 +155,7 @@ returns if user has no permissions to search
         end
 
         # Agent-specific filter based on organization membership
-        if current_user && User.should_restrict_agent_search?(current_user)
+        if current_user && User.should_restrict_agent_search?(current_user, params[:objects])
           agent_organization_ids = current_user.all_organization_ids
           if agent_organization_ids.present?
             agent_org_filter = {
